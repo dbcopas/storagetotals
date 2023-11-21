@@ -2,13 +2,29 @@
 
 # Default verbosity level
 verbosity=0
+subscription_id=""
 
 # Parse command line arguments
-while getopts "v:" opt; do
+while getopts "v:s:" opt; do
   case $opt in
     v) verbosity=$OPTARG ;;
+    s) subscription_id=$OPTARG ;;
   esac
 done
+
+# Set the Azure subscription context
+if [ -n "$subscription_id" ]; then
+    az account set --subscription "$subscription_id"
+else
+    subscription_id=$(az account show --query "id" -o tsv)
+    subscription_id=$(echo "$subscription_id" | tr -d '\r')
+    az account set --subscription $subscription_id
+fi
+
+subscription_name=$(az account show --subscription "$subscription_id" --query "name" -o tsv)
+subscription_name=$(echo "$subscription_name" | tr -d '\r')
+
+echo "Processing subscription: $subscription_name"
 
 # Function to get the previous day in the format YYYY-MM-DD
 get_previous_day() {
@@ -24,15 +40,13 @@ get_end_of_previous_day() {
 start_time=$(get_previous_day)
 end_time=$(get_end_of_previous_day)
 
-# Initialize total gigabytes variable for storage accounts
+# Initialize total gigabytes variable for storage accounts and managed disks
 total_storage_gigabytes=0
-
-# Initialize total gigabytes variable for managed disks
 total_disk_gigabytes=0
 
 # Query to get the list of storage accounts
 [ $verbosity -eq 2 ] && echo "Executing storage account query"
-storage_accounts=$(az graph query -q "Resources | where type == 'microsoft.storage/storageaccounts' | project id, name" --output json)
+storage_accounts=$(az graph query -q "Resources | where type == 'microsoft.storage/storageaccounts' and subscriptionId == '$subscription_id' | project id, name" --output json)
 
 # Process each storage account without a pipeline
 while read -r account; do
@@ -55,7 +69,7 @@ while read -r account; do
     # Convert bytes to gigabytes using awk with higher precision
     used_gigabytes=$(awk -v bytes="$used_bytes" 'BEGIN {print bytes/1024/1024/1024}')
 
-    # Add to the total storage gigabytes
+    # Add to the total storaazge gigabytes
     total_storage_gigabytes=$(awk -v total="$total_storage_gigabytes" -v used="$used_gigabytes" 'BEGIN {print total + used}')
 
     # Output for individual accounts (medium and high verbosity)
@@ -66,7 +80,7 @@ done < <(echo "$storage_accounts" | jq -c '.data[]') # Process substitution
 echo "Total Gigabytes Used by Storage Accounts: $total_storage_gigabytes"
 
 # Query to get the list of managed disks
-managed_disks_query="Resources | where type == 'microsoft.compute/disks' | project id, diskSizeGB = properties.diskSizeGB"
+managed_disks_query="Resources | where type == 'microsoft.compute/disks' and subscriptionId == '$subscription_id' | project id, diskSizeGB = properties.diskSizeGB"
 [ $verbosity -eq 2 ] && echo "Executing: az graph query -q \"$managed_disks_query\" --output json"
 managed_disks=$(az graph query -q "$managed_disks_query" --output json)
 
@@ -80,7 +94,7 @@ while read -r disk; do
 
     # Output for individual disks (high verbosity only)
     [ $verbosity -eq 2 ] && echo "Managed Disk: $disk_id, Size: $disk_size_gb GB"
-done < <(echo "$managed_disks" | jq -c '.data[]') # Process substitution
+done < <(echo "$managed_disks" | jq -c '.data[]') 
 
 # Output total for managed disks (medium and high verbosity)
 echo "Total Gigabytes Used by Managed Disks: $total_disk_gigabytes"
@@ -92,4 +106,4 @@ grand_total_gigabytes=$(awk -v storage="$total_storage_gigabytes" -v disks="$tot
 grand_total_terabytes=$(awk -v total_gb="$grand_total_gigabytes" 'BEGIN {print total_gb/1024}')
 
 # Print the grand total (all verbosity levels)
-echo "Grand Total Terabytes Used (Storage + Managed Disks): $grand_total_terabytes"
+echo "Grand Total Terabytes Used (Storage + Managed Disks) in Subscription $subscription_name: $grand_total_terabytes"
