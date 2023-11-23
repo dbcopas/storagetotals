@@ -6,6 +6,10 @@ This repository contains two scripts to assist in calculating the storage usage 
 
 - **Azure CLI**: The scripts use Azure CLI to interact with Azure resources. Ensure that Azure CLI is installed and configured on your system. Refer to [Azure CLI documentation](https://docs.microsoft.com/en-us/cli/azure/install-azure-cli) for installation instructions.
 - **jq**: `jq` is a lightweight and flexible command-line JSON processor. It's used for parsing JSON data returned by Azure CLI commands. Make sure `jq` is installed on your system. Visit [jq's official website](https://stedolan.github.io/jq/) for download and installation instructions.
+- - Azure Resource Graph extension for Azure CLI. This can be installed using the command:
+  ```bash
+  az extension add --name resource-graph
+  ```
 
 ## Scripts
 
